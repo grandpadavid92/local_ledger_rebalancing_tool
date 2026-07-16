@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Local Ledger — Portfolio Rebalancer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root{
+    --paper:#F4F5F1;
+    --paper-raised:#FBFBF9;
+    --ink:#1E2A28;
+    --ink-soft:#5B6864;
+    --rule:#D8DAD3;
+    --pine:#2F6F62;
+    --pine-dark:#1F4E44;
+    --amber:#C97A2B;
+    --rust:#B0432F;
+    --sky:#3E6C8A;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'IBM Plex Sans', sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding:32px 20px 80px;
+  }
+  .wrap{max-width:920px;margin:0 auto;}
+  header{margin-bottom:32px;border-bottom:1px solid var(--rule);padding-bottom:20px;}
+  .eyebrow{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    color:var(--pine);
+    margin:0 0 8px;
+  }
+  h1{
+    font-family:'Fraunces', serif;
+    font-optical-sizing:auto;
+    font-weight:500;
+    font-size:36px;
+    margin:0 0 8px;
+    letter-spacing:-0.01em;
+  }
+  .sub{color:var(--ink-soft);font-size:14.5px;line-height:1.5;max-width:60ch;margin:0;}
+
+  .card{
+    background:var(--paper-raised);
+    border:1px solid var(--rule);
+    border-radius:3px;
+    padding:24px;
+    margin-bottom:20px;
+  }
+  .card h2{
+    font-family:'Fraunces', serif;
+    font-weight:500;
+    font-size:19px;
+    margin:0 0 4px;
+  }
+  .card .desc{color:var(--ink-soft);font-size:13.5px;margin:0 0 18px;}
+
+  /* Step index */
+  .step-tag{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    color:var(--ink-soft);
+    margin-bottom:10px;
+  }
+  .step-num{
+    width:18px;height:18px;border-radius:50%;
+    background:var(--pine);color:#fff;
+    display:flex;align-items:center;justify-content:center;
+    font-size:10px;
+  }
+
+  /* Drop zone */
+  .dropzone{
+    border:1.5px dashed var(--rule);
+    border-radius:3px;
+    padding:36px 20px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  .dropzone:hover, .dropzone.drag{
+    border-color:var(--pine);
+    background:rgba(47,111,98,0.05);
+  }
+  .dropzone p{margin:0;color:var(--ink-soft);font-size:13.5px;}
+  .dropzone .big{font-size:15px;color:var(--ink);font-weight:500;margin-bottom:4px;}
+  input[type=file]{display:none;}
+
+  .or-row{display:flex;align-items:center;gap:12px;margin:16px 0;color:var(--ink-soft);font-size:12px;font-family:'IBM Plex Mono',monospace;}
+  .or-row .line{flex:1;height:1px;background:var(--rule);}
+
+  textarea{
+    width:100%;
+    min-height:90px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12.5px;
+    padding:12px;
+    border:1px solid var(--rule);
+    border-radius:3px;
+    background:var(--paper);
+    color:var(--ink);
+    resize:vertical;
+  }
+  textarea:focus{outline:2px solid var(--pine);outline-offset:1px;}
+
+  button{
+    font-family:'IBM Plex Sans', sans-serif;
+    font-weight:500;
+    font-size:13.5px;
+    border-radius:3px;
+    border:1px solid var(--pine);
+    background:var(--pine);
+    color:#fff;
+    padding:9px 16px;
+    cursor:pointer;
+    transition:background .15s;
+  }
+  button:hover{background:var(--pine-dark);}
+  button:focus-visible{outline:2px solid var(--pine-dark);outline-offset:2px;}
+  button.ghost{
+    background:transparent;
+    color:var(--pine);
+  }
+  button.ghost:hover{background:rgba(47,111,98,0.08);}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+
+  /* Mapping table */
+  .map-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 20px;margin-bottom:6px;}
+  @media (max-width:560px){.map-grid{grid-template-columns:1fr;}}
+  .map-field label{
+    display:block;
+    font-size:11.5px;
+    font-family:'IBM Plex Mono',monospace;
+    color:var(--ink-soft);
+    text-transform:uppercase;
+    letter-spacing:.06em;
+    margin-bottom:6px;
+  }
+  select{
+    width:100%;
+    padding:8px 10px;
+    border:1px solid var(--rule);
+    border-radius:3px;
+    background:var(--paper);
+    font-family:'IBM Plex Sans',sans-serif;
+    font-size:13px;
+    color:var(--ink);
+  }
+  .hint{font-size:11.5px;color:var(--ink-soft);margin-top:4px;}
+  .badge{
+    display:inline-block;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;
+    padding:2px 6px;
+    border-radius:2px;
+    background:rgba(47,111,98,.12);
+    color:var(--pine-dark);
+    margin-left:6px;
+  }
+
+  /* Targets table */
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  thead th{
+    text-align:left;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;
+    text-transform:uppercase;
+    letter-spacing:.06em;
+    color:var(--ink-soft);
+    border-bottom:1px solid var(--rule);
+    padding:8px 8px;
+    font-weight:500;
+  }
+  tbody td{
+    padding:9px 8px;
+    border-bottom:1px solid var(--rule);
+    vertical-align:middle;
+  }
+  tbody tr:last-child td{border-bottom:none;}
+  .num{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;text-align:right;}
+  .sym{font-weight:600;}
+  input.target-input, input.thresh-input{
+    width:64px;
+    padding:6px 7px;
+    border:1px solid var(--rule);
+    border-radius:3px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:13px;
+    text-align:right;
+    background:var(--paper);
+    color:var(--ink);
+  }
+  .target-sum{
+    display:flex;justify-content:flex-end;gap:10px;align-items:center;
+    margin-top:14px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;
+  }
+  .target-sum.bad{color:var(--rust);}
+  .target-sum.ok{color:var(--pine-dark);}
+
+  .action-row{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;}
+
+  /* Results / drift bars — signature element */
+  .drift-row{padding:14px 0;border-bottom:1px solid var(--rule);}
+  .drift-row:last-child{border-bottom:none;}
+  .drift-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;gap:10px;flex-wrap:wrap;}
+  .drift-name{font-weight:600;font-size:14px;}
+  .drift-meta{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--ink-soft);}
+  .drift-action{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12px;
+    font-weight:500;
+    padding:2px 8px;
+    border-radius:2px;
+  }
+  .act-buy{background:rgba(62,108,138,.12);color:var(--sky);}
+  .act-sell{background:rgba(176,67,47,.12);color:var(--rust);}
+  .act-hold{background:rgba(91,104,100,.1);color:var(--ink-soft);}
+
+  .beam{position:relative;height:26px;background:var(--paper);border:1px solid var(--rule);border-radius:3px;overflow:visible;}
+  .beam-band{position:absolute;top:-1px;bottom:-1px;background:rgba(47,111,98,.14);}
+  .beam-fill{position:absolute;top:0;bottom:0;left:0;border-radius:2px 0 0 2px;}
+  .beam-fill.in{background:var(--pine);}
+  .beam-fill.over{background:var(--amber);}
+  .beam-fill.under{background:var(--sky);}
+  .beam-target{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink);}
+  .beam-target::after{
+    content:attr(data-t);
+    position:absolute;top:-16px;left:50%;transform:translateX(-50%);
+    font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--ink-soft);
+    white-space:nowrap;
+  }
+
+  .summary-strip{
+    display:flex;gap:24px;flex-wrap:wrap;
+    font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-soft);
+    padding-top:14px;margin-top:6px;border-top:1px solid var(--rule);
+  }
+  .summary-strip b{color:var(--ink);font-weight:600;}
+
+  .footnote{
+    font-size:12px;color:var(--ink-soft);line-height:1.6;margin-top:6px;
+  }
+  .error-box{
+    background:rgba(176,67,47,.08);
+    border:1px solid rgba(176,67,47,.3);
+    color:var(--rust);
+    padding:10px 14px;border-radius:3px;font-size:13px;margin-top:12px;
+  }
+  .hidden{display:none !important;}
+  .privacy-note{
+    display:flex;align-items:center;gap:8px;
+    font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-soft);
+    margin-top:18px;
+  }
+  .privacy-note svg{flex:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">Local &amp; private — nothing leaves your browser</p>
+    <h1>Local Ledger</h1>
+    <p class="sub">Drop a positions CSV from any brokerage — Fidelity, Schwab, Vanguard, or a spreadsheet of your own. Map the columns, set targets and thresholds, and get the exact trades needed to rebalance.</p>
+  </header>
+
+  <!-- STEP 1: UPLOAD -->
+  <div class="card" id="card-upload">
+    <div class="step-tag"><span class="step-num">1</span> IMPORT</div>
+    <h2>Bring in your holdings</h2>
+    <p class="desc">Any CSV works — column names and order don't matter, you'll map them next.</p>
+
+    <div class="dropzone" id="dropzone">
+      <p class="big">Drop your CSV here, or click to browse</p>
+      <p>.csv from Fidelity, Schwab, Vanguard, IBKR, or anywhere else</p>
+      <input type="file" id="fileInput" accept=".csv,text/csv">
+    </div>
+
+    <div class="or-row"><div class="line"></div>OR PASTE RAW CSV<div class="line"></div></div>
+    <textarea id="pasteArea" placeholder="Symbol,Quantity,Last Price,Account&#10;VTI,120,285.40,401k&#10;VXUS,80,61.20,Roth IRA"></textarea>
+    <div class="action-row">
+      <button id="parsePasteBtn">Use pasted data</button>
+    </div>
+
+    <div id="uploadError" class="error-box hidden"></div>
+    <div class="privacy-note">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#5B6864" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/></svg>
+      Parsing happens entirely in your browser. Your CSV is never uploaded anywhere.
+    </div>
+  </div>
+
+  <!-- STEP 2: MAPPING -->
+  <div class="card hidden" id="card-map">
+    <div class="step-tag"><span class="step-num">2</span> MAP COLUMNS</div>
+    <h2>Which column is which?</h2>
+    <p class="desc" id="mapDesc">Detected <span id="rowCount">0</span> rows. Confirm or fix the guesses below.</p>
+
+    <div class="map-grid">
+      <div class="map-field">
+        <label>Symbol / Ticker <span class="badge">required</span></label>
+        <select id="mapSymbol"></select>
+      </div>
+      <div class="map-field">
+        <label>Shares / Quantity</label>
+        <select id="mapQuantity"></select>
+        <p class="hint">Needed to translate a trade into share counts.</p>
+      </div>
+      <div class="map-field">
+        <label>Price per share</label>
+        <select id="mapPrice"></select>
+      </div>
+      <div class="map-field">
+        <label>Market value <span class="badge">required if no price+qty</span></label>
+        <select id="mapValue"></select>
+        <p class="hint">Used directly if present; otherwise computed as price × quantity.</p>
+      </div>
+      <div class="map-field">
+        <label>Group by</label>
+        <select id="mapGroup"></select>
+        <p class="hint">Usually Symbol. Pick a category column instead to target by asset class.</p>
+      </div>
+      <div class="map-field">
+        <label>Account (optional)</label>
+        <select id="mapAccount"></select>
+      </div>
+    </div>
+
+    <div id="mapError" class="error-box hidden"></div>
+    <div class="action-row">
+      <button id="confirmMapBtn">Continue to targets →</button>
+      <button class="ghost" id="backToUploadBtn">← Start over</button>
+    </div>
+  </div>
+
+  <!-- STEP 3: TARGETS -->
+  <div class="card hidden" id="card-targets">
+    <div class="step-tag"><span class="step-num">3</span> SET TARGETS</div>
+    <h2>Target allocation &amp; drift threshold</h2>
+    <p class="desc">Set a target % for each holding and how far it can drift before it needs rebalancing.</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Holding</th>
+          <th class="num">Current value</th>
+          <th class="num">Current %</th>
+          <th class="num">Target %</th>
+          <th class="num">Threshold ±%</th>
+        </tr>
+      </thead>
+      <tbody id="targetsBody"></tbody>
+    </table>
+
+    <div class="target-sum" id="targetSum">Targets sum to <b id="targetSumVal">0.0</b>%</div>
+
+    <div id="targetError" class="error-box hidden"></div>
+    <div class="action-row">
+      <button id="calcBtn">Calculate rebalance →</button>
+      <button class="ghost" id="backToMapBtn">← Back to mapping</button>
+      <button class="ghost" id="evenSplitBtn">Split evenly</button>
+    </div>
+  </div>
+
+  <!-- STEP 4: RESULTS -->
+  <div class="card hidden" id="card-results">
+    <div class="step-tag"><span class="step-num">4</span> REBALANCE</div>
+    <h2>Suggested trades</h2>
+    <p class="desc">Bars show current position against target (dark tick) and your threshold band (shaded).</p>
+
+    <div id="driftList"></div>
+
+    <div class="summary-strip" id="summaryStrip"></div>
+
+    <div class="action-row">
+      <button id="downloadBtn">Download trades as CSV</button>
+      <button class="ghost" id="backToTargetsBtn">← Adjust targets</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  let rawRows = [];
+  let headers = [];
+  let mapping = {};
+  let holdings = []; // aggregated {key, value, qty, price, target, threshold}
+
+  const $ = id => document.getElementById(id);
+  const show = el => el.classList.remove('hidden');
+  const hide = el => el.classList.add('hidden');
+
+  function money(n){
+    if(!isFinite(n)) return '—';
+    return n.toLocaleString('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0});
+  }
+  function pct(n, d){
+    if(!isFinite(n)) return '—';
+    return n.toFixed(d===undefined?1:d)+'%';
+  }
+  function cleanNumber(v){
+    if(v===null||v===undefined) return NaN;
+    let s = String(v).trim();
+    if(s==='') return NaN;
+    let neg = false;
+    if(/^\(.*\)$/.test(s)){ neg = true; s = s.slice(1,-1); }
+    s = s.replace(/[$,%\s]/g,'');
+    let n = parseFloat(s);
+    if(isNaN(n)) return NaN;
+    return neg ? -n : n;
+  }
+
+  // ---------- STEP 1: Upload / Parse ----------
+  const dropzone = $('dropzone');
+  const fileInput = $('fileInput');
+
+  dropzone.addEventListener('click', ()=> fileInput.click());
+  dropzone.addEventListener('dragover', e=>{ e.preventDefault(); dropzone.classList.add('drag'); });
+  dropzone.addEventListener('dragleave', ()=> dropzone.classList.remove('drag'));
+  dropzone.addEventListener('drop', e=>{
+    e.preventDefault(); dropzone.classList.remove('drag');
+    const f = e.dataTransfer.files[0];
+    if(f) readFile(f);
+  });
+  fileInput.addEventListener('change', e=>{
+    const f = e.target.files[0];
+    if(f) readFile(f);
+  });
+
+  function readFile(file){
+    const reader = new FileReader();
+    reader.onload = e => parseCSV(e.target.result);
+    reader.onerror = () => showUploadError('Could not read that file. Try pasting the CSV text instead.');
+    reader.readAsText(file);
+  }
+
+  $('parsePasteBtn').addEventListener('click', ()=>{
+    const txt = $('pasteArea').value.trim();
+    if(!txt){ showUploadError('Paste some CSV text first.'); return; }
+    parseCSV(txt);
+  });
+
+  function showUploadError(msg){
+    const box = $('uploadError');
+    box.textContent = msg;
+    show(box);
+  }
+
+  function parseCSV(text){
+    hide($('uploadError'));
+    let result;
+    try{
+      result = Papa.parse(text, { header:true, skipEmptyLines:true, dynamicTyping:false });
+    }catch(err){
+      showUploadError('Could not parse that as CSV. Check the formatting and try again.');
+      return;
+    }
+    if(!result || !result.data || result.data.length===0 || !result.meta || !result.meta.fields || result.meta.fields.length<2){
+      showUploadError('No usable rows/columns found. Make sure the first line is a header row.');
+      return;
+    }
+    rawRows = result.data.filter(r => Object.values(r).some(v => v!==null && v!==undefined && String(v).trim()!==''));
+    headers = result.meta.fields;
+    if(rawRows.length===0){
+      showUploadError('That file parsed, but no data rows were found.');
+      return;
+    }
+    setupMapping();
+    show($('card-map'));
+    $('card-map').scrollIntoView({behavior:'smooth', block:'start'});
+  }
+
+  // ---------- STEP 2: Mapping ----------
+  function guessColumn(patterns){
+    const lower = headers.map(h=>h.toLowerCase());
+    for(const p of patterns){
+      const idx = lower.findIndex(h => h===p);
+      if(idx!==-1) return headers[idx];
+    }
+    for(const p of patterns){
+      const idx = lower.findIndex(h => h.includes(p));
+      if(idx!==-1) return headers[idx];
+    }
+    return '';
+  }
+
+  function fillSelect(sel, guess, allowNone){
+    sel.innerHTML = '';
+    if(allowNone){
+      const opt = document.createElement('option');
+      opt.value=''; opt.textContent='— none —';
+      sel.appendChild(opt);
+    }
+    headers.forEach(h=>{
+      const opt = document.createElement('option');
+      opt.value = h; opt.textContent = h;
+      if(h===guess) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    if(!guess && allowNone) sel.value='';
+  }
+
+  function setupMapping(){
+    $('rowCount').textContent = rawRows.length;
+
+    const gSymbol = guessColumn(['symbol','ticker']);
+    const gQty = guessColumn(['quantity','shares','qty']);
+    const gPrice = guessColumn(['last price','current price','price']);
+    const gValue = guessColumn(['current value','market value','value']);
+    const gAccount = guessColumn(['account name','account']);
+
+    fillSelect($('mapSymbol'), gSymbol, false);
+    fillSelect($('mapQuantity'), gQty, true);
+    fillSelect($('mapPrice'), gPrice, true);
+    fillSelect($('mapValue'), gValue, true);
+    fillSelect($('mapAccount'), gAccount, true);
+
+    // group-by: symbol column plus any other header (for asset-class grouping)
+    const groupSel = $('mapGroup');
+    groupSel.innerHTML = '';
+    headers.forEach(h=>{
+      const opt = document.createElement('option');
+      opt.value = h; opt.textContent = h;
+      if(h===gSymbol) opt.selected = true;
+      groupSel.appendChild(opt);
+    });
+  }
+
+  $('backToUploadBtn').addEventListener('click', ()=>{
+    hide($('card-map'));
+    $('card-upload').scrollIntoView({behavior:'smooth'});
+  });
+
+  $('confirmMapBtn').addEventListener('click', ()=>{
+    hide($('mapError'));
+    mapping = {
+      symbol: $('mapSymbol').value,
+      quantity: $('mapQuantity').value,
+      price: $('mapPrice').value,
+      value: $('mapValue').value,
+      group: $('mapGroup').value,
+      account: $('mapAccount').value
+    };
+    if(!mapping.symbol){
+      $('mapError').textContent = 'Please choose a Symbol column.';
+      show($('mapError'));
+      return;
+    }
+    if(!mapping.value && !(mapping.quantity && mapping.price)){
+      $('mapError').textContent = 'Map either a Market Value column, or both Quantity and Price so value can be computed.';
+      show($('mapError'));
+      return;
+    }
+    buildHoldings();
+  });
+
+  function buildHoldings(){
+    const groups = {};
+    let skipped = 0;
+
+    rawRows.forEach(row=>{
+      const groupKey = String(row[mapping.group] ?? row[mapping.symbol] ?? '').trim();
+      const symKey = String(row[mapping.symbol] ?? '').trim();
+      if(!groupKey && !symKey){ skipped++; return; }
+      const key = groupKey || symKey;
+
+      let qty = mapping.quantity ? cleanNumber(row[mapping.quantity]) : NaN;
+      let price = mapping.price ? cleanNumber(row[mapping.price]) : NaN;
+      let value = mapping.value ? cleanNumber(row[mapping.value]) : NaN;
+
+      if(isNaN(value)){
+        if(!isNaN(qty) && !isNaN(price)) value = qty*price;
+      }
+      if(isNaN(value)){ skipped++; return; }
+
+      if(!groups[key]) groups[key] = {key, value:0, qty:0, hasQty:true, price:NaN, account:new Set()};
+      groups[key].value += value;
+      if(!isNaN(qty)) groups[key].qty += qty; else groups[key].hasQty=false;
+      if(!isNaN(price)) groups[key].price = price;
+      if(mapping.account && row[mapping.account]) groups[key].account.add(String(row[mapping.account]).trim());
+    });
+
+    holdings = Object.values(groups)
+      .filter(h => h.value !== 0)
+      .sort((a,b)=> b.value - a.value);
+
+    if(holdings.length===0){
+      $('mapError').textContent = 'No valid holdings could be built from that mapping. Double-check the columns.';
+      show($('mapError'));
+      return;
+    }
+
+    setupTargets();
+    show($('card-targets'));
+    $('card-targets').scrollIntoView({behavior:'smooth', block:'start'});
+  }
+
+  // ---------- STEP 3: Targets ----------
+  function setupTargets(){
+    const total = holdings.reduce((s,h)=>s+h.value,0);
+    const evenPct = +(100/holdings.length).toFixed(1);
+
+    const tbody = $('targetsBody');
+    tbody.innerHTML = '';
+    holdings.forEach(h=>{
+      const curPct = total ? (h.value/total*100) : 0;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="sym">${escapeHtml(h.key)}</td>
+        <td class="num">${money(h.value)}</td>
+        <td class="num">${pct(curPct)}</td>
+        <td class="num"><input class="target-input" data-key="${escapeAttr(h.key)}" type="number" min="0" max="100" step="0.1" value="${h.target!==undefined?h.target:evenPct}"></td>
+        <td class="num"><input class="thresh-input" data-key="${escapeAttr(h.key)}" type="number" min="0" max="50" step="0.5" value="${h.threshold!==undefined?h.threshold:5}"></td>
+      `;
+      tbody.appendChild(tr);
+    });
+    updateTargetSum();
+    tbody.querySelectorAll('.target-input').forEach(inp=>{
+      inp.addEventListener('input', updateTargetSum);
+    });
+  }
+
+  function updateTargetSum(){
+    let sum = 0;
+    document.querySelectorAll('.target-input').forEach(inp=> sum += (parseFloat(inp.value)||0));
+    $('targetSumVal').textContent = sum.toFixed(1);
+    const box = $('targetSum');
+    box.className = 'target-sum ' + (Math.abs(sum-100)<0.15 ? 'ok' : 'bad');
+  }
+
+  $('evenSplitBtn').addEventListener('click', ()=>{
+    const evenPct = +(100/holdings.length).toFixed(1);
+    document.querySelectorAll('.target-input').forEach(inp=> inp.value = evenPct);
+    updateTargetSum();
+  });
+
+  $('backToMapBtn').addEventListener('click', ()=>{
+    hide($('card-targets'));
+    $('card-map').scrollIntoView({behavior:'smooth'});
+  });
+
+  $('calcBtn').addEventListener('click', ()=>{
+    hide($('targetError'));
+    let sum = 0;
+    document.querySelectorAll('.target-input').forEach(inp=> sum += (parseFloat(inp.value)||0));
+    if(Math.abs(sum-100) > 0.5){
+      $('targetError').textContent = `Targets sum to ${sum.toFixed(1)}%, not 100%. Adjust before calculating.`;
+      show($('targetError'));
+      return;
+    }
+    document.querySelectorAll('.target-input').forEach(inp=>{
+      const h = holdings.find(x=>x.key===inp.dataset.key);
+      if(h) h.target = parseFloat(inp.value)||0;
+    });
+    document.querySelectorAll('.thresh-input').forEach(inp=>{
+      const h = holdings.find(x=>x.key===inp.dataset.key);
+      if(h) h.threshold = parseFloat(inp.value)||0;
+    });
+    renderResults();
+    show($('card-results'));
+    $('card-results').scrollIntoView({behavior:'smooth', block:'start'});
+  });
+
+  // ---------- STEP 4: Results ----------
+  let lastTrades = [];
+
+  function renderResults(){
+    const total = holdings.reduce((s,h)=>s+h.value,0);
+    const list = $('driftList');
+    list.innerHTML = '';
+    lastTrades = [];
+
+    let buyTotal=0, sellTotal=0, offCount=0;
+
+    holdings.forEach(h=>{
+      const curPct = total? h.value/total*100 : 0;
+      const drift = curPct - h.target;
+      const overThresh = Math.abs(drift) > h.threshold;
+      const targetValue = total * h.target/100;
+      const deltaValue = targetValue - h.value; // positive = buy
+      let shares = null;
+      if(h.hasQty && h.qty>0 && h.price>0){
+        shares = deltaValue / h.price;
+      } else if(h.price>0){
+        shares = deltaValue / h.price;
+      }
+
+      if(overThresh){
+        offCount++;
+        if(deltaValue>0) buyTotal += deltaValue; else sellTotal += Math.abs(deltaValue);
+        lastTrades.push({
+          holding: h.key,
+          action: deltaValue>0?'BUY':'SELL',
+          amount: Math.abs(deltaValue).toFixed(2),
+          shares: shares!==null && isFinite(shares) ? Math.abs(shares).toFixed(3) : '',
+          currentPct: curPct.toFixed(2),
+          targetPct: h.target.toFixed(2)
+        });
+      }
+
+      const row = document.createElement('div');
+      row.className = 'drift-row';
+
+      const actionLabel = !overThresh ? 'HOLD' : (deltaValue>0 ? 'BUY' : 'SELL');
+      const actionClass = !overThresh ? 'act-hold' : (deltaValue>0 ? 'act-buy' : 'act-sell');
+      const actionText = !overThresh
+        ? 'within threshold'
+        : `${actionLabel} ${money(Math.abs(deltaValue))}` + (shares!==null && isFinite(shares) ? ` (~${Math.abs(shares).toFixed(2)} sh)` : '');
+
+      // beam geometry
+      const maxScale = Math.max(curPct, h.target, 1) * 1.35;
+      const bandLo = Math.max(0, h.target - h.threshold);
+      const bandHi = h.target + h.threshold;
+      const bandLoPct = bandLo/maxScale*100;
+      const bandWidthPct = (bandHi-bandLo)/maxScale*100;
+      const targetPosPct = h.target/maxScale*100;
+      const fillWidthPct = Math.min(100, curPct/maxScale*100);
+      const fillClass = !overThresh ? 'in' : (drift>0 ? 'over':'under');
+
+      row.innerHTML = `
+        <div class="drift-head">
+          <div>
+            <span class="drift-name">${escapeHtml(h.key)}</span>
+            <span class="drift-meta">&nbsp; ${money(h.value)} · ${pct(curPct,1)} of portfolio</span>
+          </div>
+          <span class="drift-action ${actionClass}">${actionText}</span>
+        </div>
+        <div class="beam">
+          <div class="beam-band" style="left:${bandLoPct}%;width:${bandWidthPct}%;"></div>
+          <div class="beam-fill ${fillClass}" style="width:${fillWidthPct}%;"></div>
+          <div class="beam-target" data-t="target ${pct(h.target,1)}" style="left:${targetPosPct}%;"></div>
+        </div>
+      `;
+      list.appendChild(row);
+    });
+
+    $('summaryStrip').innerHTML = `
+      <span>Portfolio value: <b>${money(total)}</b></span>
+      <span>Holdings off-threshold: <b>${offCount}</b> of ${holdings.length}</span>
+      <span>Total to buy: <b>${money(buyTotal)}</b></span>
+      <span>Total to sell: <b>${money(sellTotal)}</b></span>
+    `;
+
+    $('downloadBtn').disabled = lastTrades.length===0;
+  }
+
+  $('backToTargetsBtn').addEventListener('click', ()=>{
+    hide($('card-results'));
+    $('card-targets').scrollIntoView({behavior:'smooth'});
+  });
+
+  $('downloadBtn').addEventListener('click', ()=>{
+    if(lastTrades.length===0) return;
+    const cols = ['holding','action','amount','shares','currentPct','targetPct'];
+    const header = 'Holding,Action,Amount ($),Approx Shares,Current %,Target %\n';
+    const body = lastTrades.map(t => [t.holding,t.action,t.amount,t.shares,t.currentPct,t.targetPct].join(',')).join('\n');
+    const blob = new Blob([header+body], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'rebalance_trades.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function escapeAttr(s){ return escapeHtml(s).replace(/"/g,'&quot;'); }
+
+})();
+</script>
+</body>
+</html>
